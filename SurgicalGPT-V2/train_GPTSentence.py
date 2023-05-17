@@ -43,39 +43,34 @@ def train(args, train_dataloader, model, criterion, optimizer, epoch, tokenizer,
     
     total_loss = AverageMeter()  
         
-    for i, (_, v_f, q, a) in enumerate(train_dataloader,0):
-        # print('train')
-        # prepare questions
-        questions = []
-        for question in q: 
-            questions.append(question)
+    for i, (_, visual_features, questions, answers) in enumerate(train_dataloader,0):
+        
+        # prepare questions and answers
+        question_list = []
+        answer_list = []
+        for question in questions: question_list.append(question)
+        for answer in answers: answer_list.append(answer)
         
         if args.model_ver == 'efvlegpt2rs18' or args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':  
-            inputs = tokenizer(questions, padding="max_length",max_length= args.question_len, return_tensors="pt")
+            question_inputs = tokenizer(question_list, padding="max_length",max_length= args.question_len, return_tensors="pt")
+            answer_inputs = tokenizer(answer_list, padding="max_length",max_length= args.answer_len, return_tensors="pt")
+            
 
         # Visual features
         if args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':
-            visual_features = v_f
             visual_features['pixel_values'] = torch.squeeze(visual_features['pixel_values'],1)
         else:
-            visual_features = v_f.to(device)
+            visual_features = visual_features.to(device)
+            visual_len = 80
 
-        # labels
-        labels = labels.to(device)
-
-        # model forward pass
-        logits = model(inputs)[0]
-        # print(logits.shape)
-        # print('input',inputs)
-        # print('logits', logits)
-        # print('idx', batch['sum_idx'])
+        # model forward(question, img, answer)
+        logits = model(question_inputs, visual_features, answer_inputs)[0]
         
         # only consider loss on reference summary just like seq2seq models
-        idx = batch['sum_idx'].item() # index of separator token
-        # idx = [int(a.item()) for a in batch['sum_idx']] 
+        idx = args.question_len + visual_len
         shift_logits = logits[..., idx:-1, :].contiguous()
-        shift_labels = labels[..., idx+1:].contiguous()
-        
+        shift_labels = answer_inputs['input_ids'][..., 1:].contiguous() # 1 because answer has '<|sep|>' in front
+        shift_labels = shift_labels.to(device)
         # print('shift_logits', shift_logits.shape)
         # print('shift_labels', shift_labels.shape)
 
@@ -96,8 +91,9 @@ def train(args, train_dataloader, model, criterion, optimizer, epoch, tokenizer,
     print("Epoch: {}/{} Loss: {:.6f} AVG_Loss: {:.6f}".format(epoch, args.epochs, total_loss.val, total_loss.avg))
     
 
-# def validate(args, val_loader, model, criterion, epoch, tokenizer, device, save_output = False):
-    
+def validate(args, val_loader, model, criterion, epoch, tokenizer, device, save_output = False):
+    pass
+    return
 #     model.eval()
 
 #     total_loss = 0.0    
@@ -164,7 +160,6 @@ if __name__ == '__main__':
     parser.add_argument('--epochs',         type=int,   default=80,                                 help='number of epochs to train for (if early stopping is not triggered).') #80, 26
     parser.add_argument('--batch_size',     type=int,   default=64,                                 help='batch_size')
     parser.add_argument('--workers',        type=int,   default=1,                                  help='for data-loading; right now, only 1 works with h5pys.')
-    parser.add_argument('--print_freq',     type=int,   default=100,                                help='print training/validation stats every __ batches.')
     
     # existing checkpoint
     parser.add_argument('--checkpoint',     default=None,                                           help='path to checkpoint, None if none.')
@@ -232,9 +227,9 @@ if __name__ == '__main__':
         
         # dataloader
         if args.model_ver == 'efvlegpt2rs18' or args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':
-            train_dataset = EndoVis18VQAGPTClassification(train_seq, folder_head, folder_tail, model_ver=args.model_ver)
+            train_dataset = EndoVis18VQAGPTSEntence(train_seq, folder_head, folder_tail, model_ver=args.model_ver)
             train_dataloader = DataLoader(dataset=train_dataset, batch_size= args.batch_size, shuffle=True, num_workers=8)
-            val_dataset = EndoVis18VQAGPTClassification(val_seq, folder_head, folder_tail, model_ver=args.model_ver)
+            val_dataset = EndoVis18VQAGPTSEntence(val_seq, folder_head, folder_tail, model_ver=args.model_ver)
             val_dataloader = DataLoader(dataset=val_dataset, batch_size= args.batch_size, shuffle=False, num_workers=8)
 
         
@@ -299,11 +294,7 @@ if __name__ == '__main__':
     # Initialize / load checkpoint
     if args.checkpoint is None:
         if args.model_ver == 'efvlegpt2rs18':
-
-            EFVLEGPT2RS18Sentence(model_subver = args.model_subver, tokenizer_len=50257, vis_pos_emb = None):
-            
-
-            model = EFVLEGPT2RS18Sentence(model_subver = args.model_subver, vis_pos_emb = args.vis_pos_emb)
+            model = EFVLEGPT2RS18Sentence(model_subver = args.model_subver, tokenizer_len=len(tokenizer), vis_pos_emb = args.vis_pos_emb)
         # elif args.model_ver == 'efvlegpt2Swin':
         #     model = EFVLEGPT2SwinClassification(num_class = args.num_class, model_subver = args.model_subver, vis_pos_emb = args.vis_pos_emb)
         # elif args.model_ver == 'efvlegpt2ViT':
