@@ -1,0 +1,11 @@
+*.pyc
+*.ipynb_*
+
+/BLIP_Captioning*
+
+/dataset/Cholec80-VQA*
+/dataset/EndoVis-18-VQA*
+
+/SurgicalGPT-V2/checkpoints*
+
+*train_sentence.py
