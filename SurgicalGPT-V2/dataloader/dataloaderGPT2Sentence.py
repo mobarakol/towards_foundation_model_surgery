@@ -24,7 +24,7 @@ class EndoVis18VQAGPTSentence(Dataset):
     	seq: train_seq  = [2, 3, 4, 6, 7, 9, 10, 11, 12, 14, 15]
     	     val_seq    = [1, 5, 16]
     	folder_head     = 'dataset/EndoVis-18-VQA/seq_'
-    	folder_tail     = '/vqa/Classification/*.txt'
+    	folder_tail     = '/vqa2/Sentence/*.txt'
     '''
     def __init__(self, seq, folder_head, folder_tail, model_ver = None, transform=None):
         

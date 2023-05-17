@@ -92,64 +92,49 @@ def train(args, train_dataloader, model, criterion, optimizer, epoch, tokenizer,
     
 
 def validate(args, val_loader, model, criterion, epoch, tokenizer, device, save_output = False):
-    pass
-    return
-#     model.eval()
-
-#     total_loss = 0.0    
-#     label_true = None
-#     label_pred = None
-#     label_score = None
-#     file_names = list()
     
-#     criterion = nn.CrossEntropyLoss()
-    
-#     with torch.no_grad():
-#         for i, (file_name, v_f, q, labels) in enumerate(val_loader,0):
-            
-#             # prepare questions
-#             questions = []
-#             for question in q: questions.append(question)
-
-#             if args.model_ver == 'efvlegpt2rs18' or args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':
-                
-#                 # inputs = tokenizer(questions, padding=True, truncation=True, return_tensors="pt",)
-#                 inputs = tokenizer(questions, padding="max_length",max_length=args.question_len, return_tensors="pt")
-
-#             # GPU / CPU
-#             # Visual features
-#             if args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':
-                     
-#                 visual_features = v_f
-#                 visual_features['pixel_values'] = torch.squeeze(visual_features['pixel_values'],1)
-#             else:
-#                 visual_features = v_f.to(device)
-            
-#             # label
-#             labels = labels.to(device)
-            
-#             # model forward pass
-#             outputs = model(inputs, visual_features)
-    
-#             # loss
-#             loss = criterion(outputs,labels)
-
-#             total_loss += loss.item()
+    model.eval()
+    total_loss = AverageMeter()  
         
-#             scores, predicted = torch.max(F.softmax(outputs, dim=1).data, 1)    
-#             label_true = labels.data.cpu() if label_true == None else torch.cat((label_true, labels.data.cpu()), 0)
-#             label_pred = predicted.data.cpu() if label_pred == None else torch.cat((label_pred, predicted.data.cpu()), 0)
-#             label_score = scores.data.cpu() if label_score == None else torch.cat((label_score, scores.data.cpu()), 0)
-#             for f in file_name: file_names.append(f)
+    with torch.no_grad():
+        for i, (_, visual_features, questions, answers) in enumerate(val_loader,0):
+        
+            # prepare questions and answers
+            question_list = []
+            answer_list = []
+            for question in questions: question_list.append(question)
+            for answer in answers: answer_list.append(answer)
             
-#     acc = calc_acc(label_true, label_pred) 
-#     c_acc = 0.0
-#     # c_acc = calc_classwise_acc(label_true, label_pred)
-#     precision, recall, fscore = calc_precision_recall_fscore(label_true, label_pred)
+            if args.model_ver == 'efvlegpt2rs18' or args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':  
+                question_inputs = tokenizer(question_list, padding="max_length",max_length= args.question_len, return_tensors="pt")
+                answer_inputs = tokenizer(answer_list, padding="max_length",max_length= args.answer_len, return_tensors="pt")
+                
 
-#     print('Test: epoch: %d loss: %.6f | Acc: %.6f | Precision: %.6f | Recall: %.6f | FScore: %.6f' %(epoch, total_loss, acc, precision, recall, fscore))
+            # Visual features
+            if args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':
+                visual_features['pixel_values'] = torch.squeeze(visual_features['pixel_values'],1)
+            else:
+                visual_features = visual_features.to(device)
+                visual_len = 80
 
-#     return (acc, c_acc, precision, recall, fscore)
+            # model forward(question, img, answer)
+            logits = model(question_inputs, visual_features, answer_inputs)[0]
+            
+            # only consider loss on reference summary just like seq2seq models
+            idx = args.question_len + visual_len
+            shift_logits = logits[..., idx:-1, :].contiguous()
+            shift_labels = answer_inputs['input_ids'][..., 1:].contiguous() # 1 because answer has '<|sep|>' in front
+            shift_labels = shift_labels.to(device)
+            # print('shift_logits', shift_logits.shape)
+            # print('shift_labels', shift_labels.shape)
+
+            loss = criterion(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            total_loss.update(loss.item())
+
+        print("Epoch: {}/{} Loss: {:.6f} AVG_Loss: {:.6f}".format(epoch, args.epochs, total_loss.val, total_loss.avg))
+                      
+    return
+
 
 
 if __name__ == '__main__':
