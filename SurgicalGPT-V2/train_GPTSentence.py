@@ -22,6 +22,9 @@ from model.EFGPT2Sentence import EFVLEGPT2RS18Sentence
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+from torch.nn.utils.rnn import pack_padded_sequence
+from nltk.translate.bleu_score import corpus_bleu
+
 '''
 Seed randoms
 '''
@@ -93,6 +96,9 @@ def train(args, train_dataloader, model, criterion, optimizer, epoch, tokenizer,
 
 def validate(args, val_loader, model, criterion, epoch, tokenizer, device, save_output = False):
     
+    references = []
+    hypotheses = []
+
     model.eval()
     total_loss = AverageMeter()  
         
@@ -119,21 +125,45 @@ def validate(args, val_loader, model, criterion, epoch, tokenizer, device, save_
 
             # model forward(question, img, answer)
             logits = model(question_inputs, visual_features, answer_inputs)[0]
+
             
             # only consider loss on reference summary just like seq2seq models
             idx = args.question_len + visual_len
             shift_logits = logits[..., idx:-1, :].contiguous()
             shift_labels = answer_inputs['input_ids'][..., 1:].contiguous() # 1 because answer has '<|sep|>' in front
-            shift_labels = shift_labels.to(device)
-            # print('shift_logits', shift_logits.shape)
-            # print('shift_labels', shift_labels.shape)
+            
+            # copy for logits and labels for sentence decoding and blue-4 score calculation
+            logits_copy = logits.clone() 
+            shift_labels_copy = shift_labels.clone()
 
+            # loss calculation
+            shift_labels = shift_labels.to(device)
             loss = criterion(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
             total_loss.update(loss.item())
 
-        print("Epoch: {}/{} Loss: {:.6f} AVG_Loss: {:.6f}".format(epoch, args.epochs, total_loss.val, total_loss.avg))
+            # references    - Ground truth answer
+            answer_GT_dec = tokenizer.batch_decode(shift_labels_copy, skip_special_tokens= True)
+            for answer_GT_dec_i in answer_GT_dec: references.append([answer_GT_dec_i.split()])
+            # print(references)
+
+            # Hypotheses - predicted answer
+            _, answer_Gen_id = torch.max(logits_copy, dim=2)
+            answer_Gen_dec = tokenizer.batch_decode(answer_Gen_id, skip_special_tokens= True)
+            for answer_Gen_dec_i in answer_Gen_dec: hypotheses.append(answer_Gen_dec_i.split())
+            # print(hypotheses)
+
+            
+        # Calculate BLEU1~4
+        metrics = {}
+        metrics["Bleu_1"] = corpus_bleu(references, hypotheses, weights=(1.00, 0.00, 0.00, 0.00))
+        metrics["Bleu_2"] = corpus_bleu(references, hypotheses, weights=(0.50, 0.50, 0.00, 0.00))
+        metrics["Bleu_3"] = corpus_bleu(references, hypotheses, weights=(0.33, 0.33, 0.33, 0.00))
+        metrics["Bleu_4"] = corpus_bleu(references, hypotheses, weights=(0.25, 0.25, 0.25, 0.25))
+
+        print("EVA LOSS: {:.6f} BLEU-1 {:.6f} BLEU2 {:.6f} BLEU3 {:.6f} BLEU-4 {:.6f}".format
+          (total_loss.avg, metrics["Bleu_1"],  metrics["Bleu_2"],  metrics["Bleu_3"],  metrics["Bleu_4"]))
                       
-    return
+    return metrics
 
 
 
