@@ -46,7 +46,7 @@ def train(args, train_dataloader, model, criterion, optimizer, epoch, tokenizer,
     
     total_loss = AverageMeter()  
         
-    for i, (_, visual_features, questions, answers) in enumerate(train_dataloader,0):
+    for i, (_, visual_features, questions, answers) in enumerate(tqdm(train_dataloader),0):
         
         # prepare questions and answers
         question_list = []
@@ -74,8 +74,6 @@ def train(args, train_dataloader, model, criterion, optimizer, epoch, tokenizer,
         shift_logits = logits[..., idx:-1, :].contiguous()
         shift_labels = answer_inputs['input_ids'][..., 1:].contiguous() # 1 because answer has '<|sep|>' in front
         shift_labels = shift_labels.to(device)
-        # print('shift_logits', shift_logits.shape)
-        # print('shift_labels', shift_labels.shape)
 
         loss = criterion(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
@@ -103,7 +101,7 @@ def validate(args, val_loader, model, criterion, epoch, tokenizer, device, save_
     total_loss = AverageMeter()  
         
     with torch.no_grad():
-        for i, (_, visual_features, questions, answers) in enumerate(val_loader,0):
+        for i, (_, visual_features, questions, answers) in enumerate(tqdm(val_loader),0):
         
             # prepare questions and answers
             question_list = []
@@ -160,8 +158,8 @@ def validate(args, val_loader, model, criterion, epoch, tokenizer, device, save_
         metrics["Bleu_3"] = corpus_bleu(references, hypotheses, weights=(0.33, 0.33, 0.33, 0.00))
         metrics["Bleu_4"] = corpus_bleu(references, hypotheses, weights=(0.25, 0.25, 0.25, 0.25))
 
-        print("EVA LOSS: {:.6f} BLEU-1 {:.6f} BLEU2 {:.6f} BLEU3 {:.6f} BLEU-4 {:.6f}".format
-          (total_loss.avg, metrics["Bleu_1"],  metrics["Bleu_2"],  metrics["Bleu_3"],  metrics["Bleu_4"]))
+        print("Epoch: {}/{} EVA LOSS: {:.6f} BLEU-1 {:.6f} BLEU2 {:.6f} BLEU3 {:.6f} BLEU-4 {:.6f}".format
+          (epoch, args.epochs, total_loss.avg, metrics["Bleu_1"],  metrics["Bleu_2"],  metrics["Bleu_3"],  metrics["Bleu_4"]))
                       
     return metrics
 
@@ -173,21 +171,21 @@ if __name__ == '__main__':
     
     # Training parameters
     parser.add_argument('--epochs',         type=int,   default=80,                                 help='number of epochs to train for (if early stopping is not triggered).') #80, 26
-    parser.add_argument('--batch_size',     type=int,   default=64,                                 help='batch_size')
+    parser.add_argument('--batch_size',     type=int,   default=50,                                 help='batch_size')
     parser.add_argument('--workers',        type=int,   default=1,                                  help='for data-loading; right now, only 1 works with h5pys.')
     
     # existing checkpoint
     parser.add_argument('--checkpoint',     default=None,                                           help='path to checkpoint, None if none.')
     
     parser.add_argument('--lr',             type=float, default=0.00001,                            help=' 0.00001, 0.000005')
-    parser.add_argument('--checkpoint_dir', default= 'checkpoints/efvlegpt2rs18/m18/v3_z_qf_nmwqw_',     help='m18/c80')
+    parser.add_argument('--checkpoint_dir', default= 'checkpoints/efvlegpt2rs18/m18/v3_p_qf_',      help='m18/c80')
     parser.add_argument('--dataset_type',   default= 'm18',                                         help='m18/c80')
     parser.add_argument('--tokenizer_ver',  default= 'gpt2v1',                                      help='btv2/btv3/gpt2v1')
     parser.add_argument('--model_subver',   default= 'v3',                                          help='V0,v1/v2/v3/v4')
     parser.add_argument('--question_len',   default= 25,                                            help='25')
-    parser.add_argument('--answer_len',     default= 25,                                            help='25')
+    parser.add_argument('--answer_len',     default= 35,                                            help='25')
     parser.add_argument('--model_ver',      default= 'efvlegpt2rs18',                               help='efvlegpt2rs18/efvlegpt2Swin/"')  #vrvb/gpt2rs18/gpt2ViT/gpt2Swin/biogpt2rs18/vilgpt2vqa/efgpt2rs18gr/efvlegpt2Swingr
-    parser.add_argument('--vis_pos_emb',    default= 'zeroes',                                       help='None, zeroes, pos')
+    parser.add_argument('--vis_pos_emb',    default= 'pos',                                         help='None, zeroes, pos')
     parser.add_argument('--patch_size',     default= 5,                                             help='1/2/3/4/5')
     
     parser.add_argument('--validate',       default=False,                                          help='When only validation required False/True')
@@ -238,16 +236,15 @@ if __name__ == '__main__':
         # train_seq = [1, 2, 3, 5, 6, 7, 9, 10, 14, 15, 16]
         # val_seq = [4, 11, 12]
         folder_head = '../dataset/EndoVis-18-VQA/seq_'
-        folder_tail = '/vqa2/Classification/*.txt'
+        folder_tail = '/vqa2/Sentence/*.txt'
         
         # dataloader
         if args.model_ver == 'efvlegpt2rs18' or args.model_ver == "efvlegpt2Swin" or args.model_ver == 'efvlegpt2ViT':
-            train_dataset = EndoVis18VQAGPTSEntence(train_seq, folder_head, folder_tail, model_ver=args.model_ver)
+            
+            train_dataset = EndoVis18VQAGPTSentence(train_seq, folder_head, folder_tail, model_ver=args.model_ver)
             train_dataloader = DataLoader(dataset=train_dataset, batch_size= args.batch_size, shuffle=True, num_workers=8)
-            val_dataset = EndoVis18VQAGPTSEntence(val_seq, folder_head, folder_tail, model_ver=args.model_ver)
-            val_dataloader = DataLoader(dataset=val_dataset, batch_size= args.batch_size, shuffle=False, num_workers=8)
-
-        
+            val_dataset = EndoVis18VQAGPTSentence(val_seq, folder_head, folder_tail, model_ver=args.model_ver)
+            val_dataloader = DataLoader(dataset=val_dataset, batch_size= args.batch_size, shuffle=False, num_workers=8)        
 
     # elif args.dataset_type == 'c80':
     #     '''
@@ -340,31 +337,25 @@ if __name__ == '__main__':
     # Loss function
     criterion = CrossEntropyLoss().to(device)
 
-    # validation
-    if args.validate:
-        test_acc, test_c_acc, test_precision, test_recall, test_fscore = validate(args, val_loader=val_dataloader, model = model, criterion=criterion, epoch=(args.epochs-1), tokenizer = tokenizer, device = device)
-    else:     
-        for epoch in range(start_epoch, args.epochs):
+    for epoch in range(start_epoch, args.epochs):
 
-            if epochs_since_improvement > 0 and epochs_since_improvement % 5 == 0:
-                adjust_learning_rate(optimizer, 0.8)
+        if epochs_since_improvement > 0 and epochs_since_improvement % 5 == 0:
+            adjust_learning_rate(optimizer, 0.8)
             
-            # train
-            train_acc = train(args, train_dataloader=train_dataloader, model = model, criterion=criterion, optimizer=optimizer, epoch=epoch, tokenizer = tokenizer, device = device)
+        # train
+        train(args, train_dataloader=train_dataloader, model = model, criterion=criterion, optimizer=optimizer, epoch=epoch, tokenizer = tokenizer, device = device)
 
-            # validation
-            test_acc, test_c_acc, test_precision, test_recall, test_fscore = validate(args, val_loader=val_dataloader, model = model, criterion=criterion, epoch=epoch, tokenizer = tokenizer, device = device)
-            
-            if test_acc >= best_results[0]:
-                epochs_since_improvement = 0
+        # validation
+        metrics = validate(args, val_loader=val_dataloader, model = model, criterion=criterion, epoch=epoch, tokenizer = tokenizer, device = device)
+
+        if metrics["Bleu_4"] >= best_results[0]:
+            epochs_since_improvement = 0
                 
-                best_results[0] = test_acc
-                best_epoch[0] = epoch
-                # print('Best epoch: %d | Best acc: %.6f' %(best_epoch[0], best_results[0]))
-                save_clf_checkpoint(args.checkpoint_dir, epoch, epochs_since_improvement, model, optimizer, best_results[0])
+            best_results[0] = metrics["Bleu_4"]
+            best_epoch[0] = epoch
+            # print('Best epoch: %d | Best acc: %.6f' %(best_epoch[0], best_results[0]))
+            save_clf_checkpoint(args.checkpoint_dir, epoch, epochs_since_improvement, model, optimizer, best_results[0])
                         
-            else:
-                epochs_since_improvement += 1
-                print("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
-            
-            if train_acc >= 1.0: break
+        else:
+            epochs_since_improvement += 1
+            print("\nEpochs since last improvement: %d\n" % (epochs_since_improvement,))
