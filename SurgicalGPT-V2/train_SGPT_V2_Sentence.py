@@ -177,7 +177,7 @@ if __name__ == '__main__':
     # existing checkpoint
     parser.add_argument('--checkpoint',     default=None,                                           help='path to checkpoint, None if none.')
     
-    parser.add_argument('--lr',             type=float, default=0.00001,                            help=' 0.00001, 0.000005')
+    parser.add_argument('--lr',             type=float, default=0.00005,                            help=' 0.00001, 0.000005')
     parser.add_argument('--checkpoint_dir', default= 'checkpoints/efvlegpt2rs18/m18/v3_p_qf_',      help='m18/c80')
     parser.add_argument('--dataset_type',   default= 'm18',                                         help='m18/c80')
     parser.add_argument('--tokenizer_ver',  default= 'gpt2v1',                                      help='btv2/btv3/gpt2v1')
